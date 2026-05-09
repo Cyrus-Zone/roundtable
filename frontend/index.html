@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roundtable — 多模型群聊</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Sidebar: model management + room creation -->
+        <aside class="sidebar">
+            <h1>Roundtable</h1>
+
+            <section class="panel">
+                <h2>添加模型</h2>
+                <form id="model-form">
+                    <input type="text" id="m-name" placeholder="名字，如：架构师" required>
+                    <input type="text" id="m-model" placeholder="模型名，如：gpt-4o" required>
+                    <input type="password" id="m-key" placeholder="API Key" required>
+                    <input type="text" id="m-url" placeholder="Base URL（可选）">
+                    <input type="text" id="m-identity" placeholder="身份，如：系统架构师">
+                    <input type="text" id="m-function" placeholder="职责，如：设计架构">
+                    <select id="m-level">
+                        <option value="main">主Agent</option>
+                        <option value="participant" selected>参与者</option>
+                    </select>
+                    <button type="submit">添加</button>
+                </form>
+            </section>
+
+            <section class="panel">
+                <h2>已添加的模型</h2>
+                <ul id="model-list"></ul>
+            </section>
+
+            <section class="panel">
+                <h2>创建群聊</h2>
+                <div id="room-models"></div>
+                <button id="create-room" disabled>创建房间</button>
+            </section>
+        </aside>
+
+        <!-- Main: chat area -->
+        <main class="chat-area">
+            <div id="chat-header">
+                <span id="room-title">未创建房间</span>
+                <span id="phase-badge"></span>
+            </div>
+
+            <div id="messages"></div>
+
+            <div id="chat-input">
+                <textarea id="user-input" placeholder="输入消息..." disabled></textarea>
+                <button id="send-btn" disabled>发送</button>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+[project]
+name = "roundtable"
+version = "0.1.0"
+description = "Multi-model group chat — let AI models talk to each other"
+requires-python = ">=3.12"
+
+dependencies = [
+    "litellm>=1.60",
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+]
+
+[project.scripts]
+roundtable = "backend.main:app"
