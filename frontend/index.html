@@ -3,58 +3,172 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roundtable — 多模型群聊</title>
+    <title>Roundtable</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="app">
-        <!-- Sidebar: model management + room creation -->
-        <aside class="sidebar">
-            <h1>Roundtable</h1>
+    <div id="app">
+        <div class="app">
+            <!-- Sidebar -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h1>Roundtable</h1>
+                </div>
 
-            <section class="panel">
-                <h2>添加模型</h2>
-                <form id="model-form">
-                    <input type="text" id="m-name" placeholder="名字，如：架构师" required>
-                    <input type="text" id="m-model" placeholder="模型名，如：gpt-4o" required>
-                    <input type="password" id="m-key" placeholder="API Key" required>
-                    <input type="text" id="m-url" placeholder="Base URL（可选）">
-                    <input type="text" id="m-identity" placeholder="身份，如：系统架构师">
-                    <input type="text" id="m-function" placeholder="职责，如：设计架构">
-                    <select id="m-level">
-                        <option value="main">主Agent</option>
-                        <option value="participant" selected>参与者</option>
-                    </select>
-                    <button type="submit">添加</button>
-                </form>
-            </section>
+                <div class="panel-tabs">
+                    <button class="panel-tab" :class="{active: activePanel==='models'}" @click="activePanel='models'">模型</button>
+                    <button class="panel-tab" :class="{active: activePanel==='rooms'}" @click="activePanel='rooms'">房间</button>
+                </div>
 
-            <section class="panel">
-                <h2>已添加的模型</h2>
-                <ul id="model-list"></ul>
-            </section>
+                <!-- Models panel -->
+                <div v-show="activePanel==='models'" class="panel-content">
+                    <button class="add-btn" @click="openAddModel">+ 添加模型</button>
+                    <div v-if="models.length===0" class="empty-list">暂无模型，点击上方按钮添加</div>
+                    <div v-for="(m, i) in models" :key="i" class="model-item" @click="openEditModel(i)">
+                        <div class="mi-top">
+                            <span class="mi-name">{{ m.name }}</span>
+                            <span class="mi-badge" :class="m.level">{{ m.level==='main' ? '主Agent' : '参与者' }}</span>
+                        </div>
+                        <div class="mi-model">{{ m.model }}</div>
+                        <div class="mi-meta" v-if="m.identity">{{ m.identity }} · {{ m.function }}</div>
+                    </div>
+                </div>
 
-            <section class="panel">
-                <h2>创建群聊</h2>
-                <div id="room-models"></div>
-                <button id="create-room" disabled>创建房间</button>
-            </section>
-        </aside>
+                <!-- Rooms panel -->
+                <div v-show="activePanel==='rooms'" class="panel-content">
+                    <button class="add-btn" @click="openCreateRoom">+ 创建房间</button>
+                    <div v-if="rooms.length===0" class="empty-list">暂无房间</div>
+                    <div v-for="r in rooms" :key="r.id" class="room-item" @click="selectRoom(r.id)">
+                        <div class="ri-name">房间 {{ r.id }}</div>
+                        <div class="ri-info">{{ r.participantCount }} 个参与者 · {{ r.phase === 'plan' ? 'Plan' : 'Discuss' }}</div>
+                    </div>
+                </div>
+            </aside>
 
-        <!-- Main: chat area -->
-        <main class="chat-area">
-            <div id="chat-header">
-                <span id="room-title">未创建房间</span>
-                <span id="phase-badge"></span>
+            <!-- Chat area -->
+            <main class="chat-area">
+                <div v-if="!currentRoomId" class="empty-state">
+                    <div class="empty-icon">💬</div>
+                    <h2>选择一个房间或创建新房间</h2>
+                    <p>在左侧添加模型，然后创建房间开始多模型对话</p>
+                </div>
+
+                <div v-else class="chat-container">
+                    <div id="chat-header">
+                        <div class="header-info">
+                            <span class="room-title">房间 {{ currentRoomId }}</span>
+                            <span class="phase-badge" :class="currentPhase">{{ currentPhase === 'plan' ? 'Plan' : 'Discuss' }}</span>
+                        </div>
+                        <div class="participant-avatars">
+                            <div v-for="m in roomModels" :key="m.name" class="avatar" :title="m.name + ' (' + m.model + ')'">
+                                {{ m.name.substring(0, 2) }}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="messages" ref="messagesEl">
+                        <div v-for="(msg, i) in messages" :key="i" :class="['msg-row', msg.sender==='user' ? 'user' : '']">
+                            <div :class="['msg-avatar', avatarClass(msg.sender)]">
+                                {{ senderLabel(msg.sender) }}
+                            </div>
+                            <div class="msg-body">
+                                <div class="msg-sender" v-if="msg.sender!=='user'">{{ msg.sender }}</div>
+                                <div class="msg-bubble" v-html="highlightMention(msg.content)"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="chat-input">
+                        <textarea
+                            id="user-input"
+                            v-model="inputText"
+                            @keydown.enter.exact.prevent="sendMessage"
+                            placeholder="输入消息... @某人 可指定回复"
+                            rows="1"
+                        ></textarea>
+                        <button id="send-btn" @click="sendMessage" :disabled="loading">
+                            {{ loading ? '发送中...' : '发送' }}
+                        </button>
+                    </div>
+                </div>
+            </main>
+
+            <!-- Modal: Add/Edit model -->
+            <div v-if="showModelModal" class="modal show" @click.self="closeModelModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>{{ editingIndex >= 0 ? '编辑模型' : '添加模型' }}</h2>
+                        <button class="modal-close" @click="closeModelModal">&times;</button>
+                    </div>
+                    <form @submit.prevent="saveModel">
+                        <div class="form-row">
+                            <label>名字</label>
+                            <input v-model="form.name" placeholder="如：架构师、安全审计员" required>
+                        </div>
+                        <div class="form-row">
+                            <label>模型</label>
+                            <input v-model="form.model" placeholder="如：gpt-4o, claude-sonnet-4-20250514" required>
+                        </div>
+                        <div class="form-row">
+                            <label>API Key</label>
+                            <input v-model="form.api_key" :type="showKey ? 'text' : 'password'" placeholder="sk-..." required>
+                            <span class="toggle-eye" @click="showKey=!showKey">{{ showKey ? '👁' : '👁‍🗨' }}</span>
+                        </div>
+                        <div class="form-row">
+                            <label>Base URL</label>
+                            <input v-model="form.base_url" placeholder="留空使用官方 API">
+                        </div>
+                        <div class="form-row">
+                            <label>身份</label>
+                            <input v-model="form.identity" placeholder="如：系统架构师，20年经验">
+                        </div>
+                        <div class="form-row">
+                            <label>职责</label>
+                            <input v-model="form.function" placeholder="如：设计整体架构">
+                        </div>
+                        <div class="form-row">
+                            <label>角色</label>
+                            <select v-model="form.level">
+                                <option value="main">主Agent（主持人）</option>
+                                <option value="participant">参与者</option>
+                            </select>
+                        </div>
+                        <div class="form-actions">
+                            <button v-if="editingIndex>=0" type="button" class="btn-danger" @click="deleteModel">删除</button>
+                            <div style="flex:1"></div>
+                            <button type="button" class="btn-cancel" @click="closeModelModal">取消</button>
+                            <button type="submit" class="btn-save">保存</button>
+                        </div>
+                    </form>
+                </div>
             </div>
 
-            <div id="messages"></div>
-
-            <div id="chat-input">
-                <textarea id="user-input" placeholder="输入消息..." disabled></textarea>
-                <button id="send-btn" disabled>发送</button>
+            <!-- Modal: Create room -->
+            <div v-if="showRoomModal" class="modal show" @click.self="showRoomModal=false">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>创建房间</h2>
+                        <button class="modal-close" @click="showRoomModal=false">&times;</button>
+                    </div>
+                    <p class="room-hint">选择参与对话的模型：</p>
+                    <div class="room-models-list">
+                        <label v-for="m in models" :key="m.name">
+                            <input type="checkbox" :value="m.name" v-model="selectedForRoom">
+                            <span class="rm-name">{{ m.name }}</span>
+                            <span class="rm-model">{{ m.model }}</span>
+                            <span class="mi-badge" :class="m.level">{{ m.level==='main' ? '主' : '参' }}</span>
+                        </label>
+                        <div v-if="models.length===0" class="empty-list">请先在「模型」面板添加模型</div>
+                    </div>
+                    <div class="form-actions">
+                        <div style="flex:1"></div>
+                        <button class="btn-cancel" @click="showRoomModal=false">取消</button>
+                        <button class="btn-save" @click="createRoom" :disabled="selectedForRoom.length===0">创建</button>
+                    </div>
+                </div>
             </div>
-        </main>
+        </div>
     </div>
 
     <script src="app.js"></script>

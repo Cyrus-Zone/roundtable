@@ -125,6 +125,10 @@ class ChatRoom:
             "goal": self.state.goal,
             "termination_condition": self.state.termination_condition,
             "summary": self.history_mgr.summary,
+            "participants": [
+                {"name": p.name, "model": p.model, "level": p.level.value}
+                for p in self.participants.values()
+            ],
             "history": [
                 {
                     "sender": m.sender,

@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -60,7 +60,8 @@ def get_models():
 
 
 @app.post("/api/models")
-def save_model_endpoint(model: dict):
+async def save_model_endpoint(request: Request):
+    model = await request.json()
     models = load_models()
     models.append(model)
     save_models(models)
@@ -77,11 +78,12 @@ def delete_model(name: str):
 # ── Room ─────────────────────────────────────────────────────────
 
 @app.post("/api/rooms")
-def create_room(room_req: dict):
+async def create_room(request: Request):
     """
     Create a new room.
     Body: {"models": [name1, name2, ...]} — list of model names to include
     """
+    room_req = await request.json()
     all_models = load_models()
     name_map = {m["name"]: m for m in all_models}
 
@@ -107,7 +109,8 @@ def get_room(room_id: str):
 
 
 @app.post("/api/rooms/{room_id}/message")
-def send_message(room_id: str, body: dict, background_tasks: BackgroundTasks):
+async def send_message(room_id: str, request: Request, background_tasks: BackgroundTasks):
+    body = await request.json()
     room = ROOMS.get(room_id)
     if not room:
         raise HTTPException(404, "Room not found")
@@ -131,7 +134,8 @@ def send_message(room_id: str, body: dict, background_tasks: BackgroundTasks):
 
 
 @app.post("/api/rooms/{room_id}/goal")
-def set_goal(room_id: str, body: dict):
+async def set_goal(room_id: str, request: Request):
+    body = await request.json()
     room = ROOMS.get(room_id)
     if not room:
         raise HTTPException(404, "Room not found")

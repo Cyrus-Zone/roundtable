@@ -1,170 +1,206 @@
-/* ── State ────────────────────────────────────── */
-let models = [];
-let roomId = null;
-let loading = false;
+const { createApp, ref, computed, nextTick, onMounted } = Vue;
 
-const API = "";  // same origin
+const API = "";
 
-/* ── DOM refs ─────────────────────────────────── */
-const modelForm = document.getElementById("model-form");
-const modelList = document.getElementById("model-list");
-const roomModels = document.getElementById("room-models");
-const createBtn = document.getElementById("create-room");
-const roomTitle = document.getElementById("room-title");
-const phaseBadge = document.getElementById("phase-badge");
-const messagesDiv = document.getElementById("messages");
-const userInput = document.getElementById("user-input");
-const sendBtn = document.getElementById("send-btn");
+createApp({
+    setup() {
+        // State
+        const activePanel = ref("models");
+        const models = ref([]);
+        const rooms = ref([]);
+        const currentRoomId = ref(null);
+        const messages = ref([]);
+        const currentPhase = ref("plan");
+        const roomModels = ref([]);
+        const inputText = ref("");
+        const loading = ref(false);
+        const messagesEl = ref(null);
 
-/* ── Init ─────────────────────────────────────── */
-fetchModels();
+        // Model modal
+        const showModelModal = ref(false);
+        const editingIndex = ref(-1);
+        const showKey = ref(false);
+        const form = ref({ name: "", model: "", api_key: "", base_url: "", identity: "", function: "", level: "participant" });
 
-/* ── Model CRUD ───────────────────────────────── */
-async function fetchModels() {
-    const res = await fetch(`${API}/api/models`);
-    models = await res.json();
-    renderModelList();
-    renderRoomModelCheckboxes();
-}
+        // Room modal
+        const showRoomModal = ref(false);
+        const selectedForRoom = ref([]);
 
-modelForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const model = {
-        name: document.getElementById("m-name").value,
-        model: document.getElementById("m-model").value,
-        api_key: document.getElementById("m-key").value,
-        base_url: document.getElementById("m-url").value || null,
-        identity: document.getElementById("m-identity").value,
-        function: document.getElementById("m-function").value,
-        level: document.getElementById("m-level").value,
-        system_prompt: "",
-    };
-    await fetch(`${API}/api/models`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(model),
-    });
-    modelForm.reset();
-    fetchModels();
-});
+        // ── Model CRUD ─────────────────────────────────────
+        async function fetchModels() {
+            try {
+                const res = await fetch(`${API}/api/models`);
+                models.value = await res.json();
+            } catch (e) { console.error(e); }
+        }
 
-function renderModelList() {
-    modelList.innerHTML = models.map((m) => `
-        <li>
-            <span><b>${m.name}</b> <span style="color:#888">(${m.model})</span> <span style="color:#666;font-size:11px">[${m.level === "main" ? "主" : "参"}]</span></span>
-            <button class="del-btn" onclick="deleteModel('${m.name}')">&times;</button>
-        </li>
-    `).join("");
-}
+        function openAddModel() {
+            editingIndex.value = -1;
+            form.value = { name: "", model: "", api_key: "", base_url: "", identity: "", function: "", level: "participant" };
+            showKey.value = false;
+            showModelModal.value = true;
+        }
 
-async function deleteModel(name) {
-    await fetch(`${API}/api/models/${name}`, { method: "DELETE" });
-    fetchModels();
-}
+        function openEditModel(i) {
+            editingIndex.value = i;
+            form.value = { ...models.value[i] };
+            showKey.value = false;
+            showModelModal.value = true;
+        }
 
-/* ── Room creation ────────────────────────────── */
-function renderRoomModelCheckboxes() {
-    roomModels.innerHTML = models.map((m) => `
-        <label>
-            <input type="checkbox" value="${m.name}" onchange="updateCreateBtn()">
-            ${m.name} (${m.model})
-        </label>
-    `).join("");
-}
+        function closeModelModal() {
+            showModelModal.value = false;
+        }
 
-function updateCreateBtn() {
-    const checked = roomModels.querySelectorAll("input:checked");
-    createBtn.disabled = checked.length === 0;
-}
+        async function saveModel() {
+            const data = { ...form.value, base_url: form.value.base_url || null };
+            if (editingIndex.value >= 0) {
+                // Update: delete old + add new
+                const oldName = models.value[editingIndex.value].name;
+                await fetch(`${API}/api/models/${encodeURIComponent(oldName)}`, { method: "DELETE" });
+            }
+            await fetch(`${API}/api/models`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            });
+            showModelModal.value = false;
+            await fetchModels();
+        }
 
-createBtn.addEventListener("click", async () => {
-    const checked = [...roomModels.querySelectorAll("input:checked")].map((c) => c.value);
-    const res = await fetch(`${API}/api/rooms`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ models: checked }),
-    });
-    const data = await res.json();
-    roomId = data.room_id;
-    roomTitle.textContent = `房间 ${roomId}`;
-    userInput.disabled = false;
-    sendBtn.disabled = false;
-    phaseBadge.className = "plan";
-    phaseBadge.textContent = "Plan";
-    messagesDiv.innerHTML = '<div class="message system-summary">房间已创建，进入 Plan 模式。请先描述你的需求，主Agent 会和你讨论并确认目标。</div>';
-});
+        async function deleteModel() {
+            if (editingIndex.value < 0) return;
+            const name = models.value[editingIndex.value].name;
+            await fetch(`${API}/api/models/${encodeURIComponent(name)}`, { method: "DELETE" });
+            showModelModal.value = false;
+            await fetchModels();
+        }
 
-/* ── Send message ─────────────────────────────── */
-async function sendMessage() {
-    const content = userInput.value.trim();
-    if (!content || !roomId || loading) return;
+        // ── Room ───────────────────────────────────────────
+        function openCreateRoom() {
+            selectedForRoom.value = models.value.map(m => m.name);
+            showRoomModal.value = true;
+        }
 
-    loading = true;
-    userInput.disabled = true;
-    sendBtn.disabled = true;
-    appendMessage("user", content);
-    userInput.value = "";
+        async function createRoom() {
+            const res = await fetch(`${API}/api/rooms`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ models: selectedForRoom.value }),
+            });
+            const data = await res.json();
+            showRoomModal.value = false;
+            await fetchRooms();
+            selectRoom(data.room_id);
+        }
 
-    try {
-        const res = await fetch(`${API}/api/rooms/${roomId}/message`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ content }),
+        async function fetchRooms() {
+            // Rooms are in-memory, so we just track them from creation
+            // For MVP, we store room info in localStorage
+            try {
+                const stored = JSON.parse(localStorage.getItem("rt_rooms") || "[]");
+                rooms.value = stored;
+            } catch (e) { rooms.value = []; }
+        }
+
+        function saveRoomInfo(id, roomData) {
+            let list = JSON.parse(localStorage.getItem("rt_rooms") || "[]");
+            if (!list.find(r => r.id === id)) {
+                list.push({
+                    id,
+                    phase: roomData.phase,
+                    participantCount: Object.keys(roomData.participants || {}).length || roomModels.value.length,
+                });
+                localStorage.setItem("rt_rooms", JSON.stringify(list));
+            }
+            fetchRooms();
+        }
+
+        async function selectRoom(id) {
+            currentRoomId.value = id;
+            try {
+                const res = await fetch(`${API}/api/rooms/${id}`);
+                const data = await res.json();
+                messages.value = data.history || [];
+                currentPhase.value = data.phase || "plan";
+                roomModels.value = data.participants || [];
+                await nextTick();
+                scrollToBottom();
+            } catch (e) {
+                messages.value = [];
+            }
+        }
+
+        // ── Send message ───────────────────────────────────
+        async function sendMessage() {
+            const content = inputText.value.trim();
+            if (!content || !currentRoomId.value || loading.value) return;
+
+            loading.value = true;
+            // Optimistic: add user message immediately
+            messages.value.push({ sender: "user", content, timestamp: Date.now() });
+            inputText.value = "";
+            await nextTick();
+            scrollToBottom();
+
+            try {
+                const res = await fetch(`${API}/api/rooms/${currentRoomId.value}/message`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ content }),
+                });
+                const data = await res.json();
+                // Replace full history from server
+                messages.value = data.history || [];
+                currentPhase.value = data.phase || currentPhase.value;
+                await nextTick();
+                scrollToBottom();
+            } catch (err) {
+                messages.value.push({ sender: "系统", content: "发送失败: " + err.message, timestamp: Date.now() });
+            }
+            loading.value = false;
+        }
+
+        function scrollToBottom() {
+            if (messagesEl.value) {
+                messagesEl.value.scrollTop = messagesEl.value.scrollHeight;
+            }
+        }
+
+        // ── Helpers ────────────────────────────────────────
+        function avatarClass(sender) {
+            if (sender === "user") return "user-avatar";
+            if (sender === "系统") return "";
+            // Check if sender is main agent
+            const m = roomModels.value.find(r => r.name === sender);
+            if (m && m.level === "main") return "main-avatar";
+            return "participant-avatar";
+        }
+
+        function senderLabel(sender) {
+            if (sender === "user") return "我";
+            if (sender === "系统") return "系";
+            return sender.substring(0, 2);
+        }
+
+        function highlightMention(text) {
+            return text.replace(/@(\S+)/g, '<span class="mention">@$1</span>');
+        }
+
+        // ── Init ───────────────────────────────────────────
+        onMounted(() => {
+            fetchModels();
+            fetchRooms();
         });
-        const data = await res.json();
 
-        // Render replies
-        for (const r of data.replies) {
-            appendMessage(r.sender, r.content);
-        }
-
-        // Update phase badge
-        const roomData = await fetch(`${API}/api/rooms/${roomId}`).then((r) => r.json());
-        phaseBadge.className = roomData.phase;
-        phaseBadge.textContent = roomData.phase === "plan" ? "Plan" : "Discuss";
-
-        // If entered discuss phase, show notification
-        if (roomData.phase === "discuss" && phaseBadge.textContent === "Discuss") {
-            appendMessage("system-summary", `讨论目标已确认：${roomData.goal}`);
-        }
-    } catch (err) {
-        appendMessage("system-summary", "发送失败：" + err.message);
-    }
-
-    loading = false;
-    userInput.disabled = false;
-    sendBtn.disabled = false;
-    userInput.focus();
-}
-
-sendBtn.addEventListener("click", sendMessage);
-userInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        sendMessage();
-    }
-});
-
-/* ── Render helpers ───────────────────────────── */
-function appendMessage(sender, content) {
-    const div = document.createElement("div");
-    const cls = sender === "user" ? "user" : sender.startsWith("[系统") ? "system-summary" : "";
-    div.className = `message ${cls}`;
-
-    if (!cls) {
-        div.innerHTML = `<div class="sender">${sender}</div>${escapeHtml(content)}`;
-    } else if (sender === "user") {
-        div.innerHTML = `<div class="sender">你</div>${escapeHtml(content)}`;
-    } else {
-        div.textContent = content;
-    }
-
-    messagesDiv.appendChild(div);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-}
-
-function escapeHtml(text) {
-    const d = document.createElement("div");
-    d.textContent = text;
-    return d.innerHTML;
-}
+        return {
+            activePanel, models, rooms, currentRoomId, messages, currentPhase, roomModels,
+            inputText, loading, messagesEl,
+            showModelModal, editingIndex, showKey, form,
+            showRoomModal, selectedForRoom,
+            fetchModels, openAddModel, openEditModel, closeModelModal, saveModel, deleteModel,
+            openCreateRoom, createRoom, selectRoom,
+            sendMessage, avatarClass, senderLabel, highlightMention,
+        };
+    },
+}).mount("#app");
