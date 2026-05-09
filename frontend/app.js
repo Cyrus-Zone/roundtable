@@ -15,6 +15,12 @@ createApp({
         const inputText = ref("");
         const loading = ref(false);
         const messagesEl = ref(null);
+        const inputEl = ref(null);
+
+        // @mention popup
+        const showMention = ref(false);
+        const mentionQuery = ref("");
+        const mentionIdx = ref(0);
 
         // Model modal
         const showModelModal = ref(false);
@@ -167,6 +173,62 @@ createApp({
             }
         }
 
+        // ── @mention ───────────────────────────────────────
+        const mentionFiltered = computed(() => {
+            const q = mentionQuery.value.toLowerCase();
+            return roomModels.value.filter(m => m.name.toLowerCase().includes(q));
+        });
+
+        function onInput() {
+            // Detect @ in the text
+            const text = inputText.value;
+            const cursorPos = inputEl.value?.selectionStart ?? text.length;
+            // Find the last @ before cursor
+            const beforeCursor = text.substring(0, cursorPos);
+            const atMatch = beforeCursor.match(/@([^\s@]*)$/);
+            if (atMatch) {
+                showMention.value = true;
+                mentionQuery.value = atMatch[1];
+                mentionIdx.value = 0;
+            } else {
+                showMention.value = false;
+            }
+        }
+
+        function onKeydown(e) {
+            if (!showMention.value) return;
+            if (e.key === "ArrowDown") {
+                e.preventDefault();
+                mentionIdx.value = (mentionIdx.value + 1) % mentionFiltered.value.length;
+            } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                mentionIdx.value = (mentionIdx.value - 1 + mentionFiltered.value.length) % mentionFiltered.value.length;
+            } else if (e.key === "Enter" && mentionFiltered.value.length > 0) {
+                e.preventDefault();
+                selectMention(mentionFiltered.value[mentionIdx.value].name);
+            } else if (e.key === "Escape") {
+                showMention.value = false;
+            }
+        }
+
+        function selectMention(name) {
+            const text = inputText.value;
+            const cursorPos = inputEl.value?.selectionStart ?? text.length;
+            const beforeCursor = text.substring(0, cursorPos);
+            const afterCursor = text.substring(cursorPos);
+            // Replace the @query with @name
+            const atMatch = beforeCursor.match(/^(.*)@([^\s@]*)$/s);
+            if (atMatch) {
+                inputText.value = atMatch[1] + "@" + name + afterCursor;
+            }
+            showMention.value = false;
+            nextTick(() => {
+                inputEl.value?.focus();
+                const newPos = atMatch ? (atMatch[1].length + 1 + name.length) : text.length;
+                inputEl.value?.setSelectionRange(newPos, newPos);
+            });
+        }
+
         // ── Helpers ────────────────────────────────────────
         function avatarClass(sender) {
             if (sender === "user") return "user-avatar";
@@ -195,12 +257,14 @@ createApp({
 
         return {
             activePanel, models, rooms, currentRoomId, messages, currentPhase, roomModels,
-            inputText, loading, messagesEl,
+            inputText, loading, messagesEl, inputEl,
+            showMention, mentionQuery, mentionIdx, mentionFiltered,
             showModelModal, editingIndex, showKey, form,
             showRoomModal, selectedForRoom,
             fetchModels, openAddModel, openEditModel, closeModelModal, saveModel, deleteModel,
             openCreateRoom, createRoom, selectRoom,
             sendMessage, avatarClass, senderLabel, highlightMention,
+            onInput, onKeydown, selectMention,
         };
     },
 }).mount("#app");

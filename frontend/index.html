@@ -80,13 +80,34 @@
                     </div>
 
                     <div id="chat-input">
-                        <textarea
-                            id="user-input"
-                            v-model="inputText"
-                            @keydown.enter.exact.prevent="sendMessage"
-                            placeholder="输入消息... @某人 可指定回复"
-                            rows="1"
-                        ></textarea>
+                        <div class="input-wrapper">
+                            <textarea
+                                id="user-input"
+                                ref="inputEl"
+                                v-model="inputText"
+                                @input="onInput"
+                                @keydown="onKeydown"
+                                @keydown.enter.exact.prevent="sendMessage"
+                                placeholder="输入消息... @某人 可指定回复"
+                                rows="1"
+                            ></textarea>
+                            <!-- @mention popup -->
+                            <div v-if="showMention" class="mention-popup" :style="mentionStyle">
+                                <div v-if="mentionFiltered.length===0" class="mention-empty">无匹配</div>
+                                <div
+                                    v-for="(m, idx) in mentionFiltered"
+                                    :key="m.name"
+                                    :class="['mention-item', {active: idx===mentionIdx}]"
+                                    @click="selectMention(m.name)"
+                                >
+                                    <span class="mention-avatar" :class="m.level==='main'?'main-avatar':'participant-avatar'">
+                                        {{ m.name.substring(0, 2) }}
+                                    </span>
+                                    <span class="mention-name">{{ m.name }}</span>
+                                    <span class="mention-model">{{ m.model }}</span>
+                                </div>
+                            </div>
+                        </div>
                         <button id="send-btn" @click="sendMessage" :disabled="loading">
                             {{ loading ? '发送中...' : '发送' }}
                         </button>
