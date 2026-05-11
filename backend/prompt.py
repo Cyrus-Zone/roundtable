@@ -12,7 +12,7 @@ PARTICIPANTS_INFO = """
 """
 
 
-def build_main_prompt(p: "Participant", others: list["Participant"], goal: str, termination: str) -> str:
+def build_main_prompt(p: "Participant", others: list["Participant"], goal: str, termination: str, skills_info: str = "") -> str:
     """Build system prompt for the main agent."""
     others_info = "\n".join(
         f"- {o.name}: {o.identity}（{o.function}）"
@@ -33,6 +33,7 @@ def build_main_prompt(p: "Participant", others: list["Participant"], goal: str, 
         f"- 判断讨论是否达成目标，如果达成则宣布讨论结束\n"
         f"- 当讨论方向偏移时，主动纠正方向\n\n"
         f"{participants}"
+        f"{skills_info}"
         f"格式要求：\n"
         f"- 在 plan 阶段，向用户确认需求和目标\n"
         f"- 在 discuss 阶段，通过 @ 分配任务给参与者\n"

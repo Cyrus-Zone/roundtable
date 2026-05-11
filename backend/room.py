@@ -5,6 +5,7 @@ from backend.protocol import Message, Participant, Level, Phase, RoomState
 from backend.prompt import build_main_prompt, build_participant_prompt
 from backend.llm import call_llm
 from backend.history import HistoryManager
+from backend.skills import execute_skills, registry
 
 
 class ChatRoom:
@@ -24,7 +25,8 @@ class ChatRoom:
     def _build_main_messages(self, user_msg: Message) -> list[dict]:
         """Build messages for main agent: system prompt + history + user message."""
         others = [p for p in self.participants.values() if p.level != Level.MAIN and p.name != "summarizer"]
-        system = build_main_prompt(self.main_agent, others, self.state.goal, self.state.termination_condition)
+        skills_info = registry.get_descriptors("main")
+        system = build_main_prompt(self.main_agent, others, self.state.goal, self.state.termination_condition, skills_info)
 
         messages = [{"role": "system", "content": system}]
         for msg in self.state.history:
@@ -84,8 +86,21 @@ class ChatRoom:
                 content=reply_content,
                 target="all",
             )
+
+            # Execute any skills in the reply
+            cleaned_content, skill_results = execute_skills(reply_content, self)
+            main_reply.content = cleaned_content
+
             self._send(main_reply)
             replies.append(main_reply)
+
+            # Notify about skill executions
+            for result in skill_results:
+                if result.metadata:
+                    self._send(Message(
+                        sender="系统",
+                        content=result.display_text,
+                    ))
 
             # Step 2: Check if main agent @'d any participants
             mentioned = self._find_mentioned(reply_content)
