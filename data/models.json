@@ -1,12 +1,12 @@
 {
   "models": [
     {
-      "name": "1",
-      "model": "1",
-      "api_key": "1",
-      "base_url": "1",
-      "identity": "1",
-      "function": "1",
+      "name": "主持人",
+      "model": "aiplat/deepseek-v3.2",
+      "api_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3NLZXkiOiJhcGkyX2I4MzNjNTRmLTU2ZjYtNGM1YS04MGY5LTJiN2NlNDQ0NDRiZiIsImVudiI6InNpdCIsImp0aSI6Mjg5OTEsInByb2plY3RfaWQiOjEyNTU0LCJzeXN0ZW1LZXkiOiI4ZGY2YTNlYS01OTlkLTQwZjEtOGQ0My1iNDdhNTBiNGRlYWIifQ.uS_kw_IwkQsOEe2nEwJNGlxWER41YfK3HC5ERHfrjQk",
+      "base_url": "http://llm-model-hub-proxy.sit.sf-express.com",
+      "identity": "主持人",
+      "function": "总结整体目标，并规划步骤后，维护整个讨论不偏离大方向",
       "level": "main"
     }
   ]

@@ -25,7 +25,7 @@ ROOMS: dict[str, ChatRoom] = {}
 
 def load_models() -> list[dict]:
     if MODELS_FILE.exists():
-        with open(MODELS_FILE) as f:
+        with open(MODELS_FILE, encoding="utf-8") as f:
             return json.load(f).get("models", [])
     return []
 
