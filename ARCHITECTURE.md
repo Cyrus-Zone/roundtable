@@ -36,6 +36,8 @@ Two layers work together:
 - **Program-level routing**: Only @-mentioned participants get an LLM call
 - **Prompt-level awareness**: The @-mentioned participant knows it was addressed and can respond contextually
 
+The frontend provides an **autocomplete popup** when the user types `@`, making it easy to mention agents by name.
+
 ### 3. Progressive Disclosure
 
 Each agent receives a system prompt that progressively discloses information:
@@ -48,6 +50,10 @@ Your responsibility: {function}
 Other participants:
 - {other1_name}: {other1_identity} ({other1_function})
 - {other2_name}: {other2_identity} ({other2_function})
+
+Available Skills:
+- add_agent: Create a new participant in the discussion.
+  Usage: <skill:add_agent name="AgentName" identity="Role" function="What they do"/>
 
 Rules:
 - If someone @-mentions you, you should respond
@@ -93,7 +99,71 @@ When a room is created, it starts in Plan mode:
 - Judges when the goal is met and announces completion
 - User can interrupt at any time to modify the goal
 
-### 6. Protocol Design
+### 6. Skills System
+
+Skills are extensible capabilities that agents can invoke via `<skill:name param="value"/>` tags in their replies. The backend parses these tags, executes the corresponding skill, and replaces the tag with a human-readable result.
+
+#### Architecture
+
+```
+┌─────────────────────────────────────────────┐
+│ Agent replies with:                          │
+│ "I think we need a security expert.         │
+│  <skill:add_agent name="SecAuditor"          │
+│    identity="Security expert"                │
+│    function="Review security"/>              │
+└──────────────────┬──────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────┐
+│ Skills Engine:                               │
+│ 1. Regex-parse <skill:.../> tags             │
+│ 2. Look up skill in registry                 │
+│ 3. Execute skill.execute(params, room)       │
+│ 4. Replace tag with display text             │
+└──────────────────┬──────────────────────────┘
+                   │
+                   ▼
+┌─────────────────────────────────────────────┐
+│ Clean reply sent to chat:                    │
+│ "I think we need a security expert.          │
+│  「SecAuditor」已加入讨论（Security expert）"  │
+│                                              │
+│ System message: 「SecAuditor」已加入讨论      │
+└─────────────────────────────────────────────┘
+```
+
+#### Built-in Skills
+
+| Skill | Description | Allowed Levels |
+|-------|-------------|----------------|
+| `add_agent` | Create a new participant dynamically, inheriting the main agent's model and API key | main only |
+
+#### Adding Custom Skills
+
+Create a class that extends `Skill`:
+
+```python
+from backend.skills.base import Skill, SkillResult
+
+class MySkill(Skill):
+    name = "my_skill"
+    description = "What this skill does"
+    allowed_levels = ["main"]
+
+    def execute(self, params: dict, room) -> SkillResult:
+        # ... do something
+        return SkillResult(success=True, display_text="Done!")
+```
+
+Then register it:
+
+```python
+from backend.skills import registry
+registry.register(MySkill())
+```
+
+### 7. Protocol Design
 
 The entire system communicates through a single protocol type:
 
@@ -118,6 +188,7 @@ User types: "帮我设计一个用户系统"
 ┌─────────────────────────────────────────────┐
 │ Main Agent receives full history            │
 │ System prompt: goal + role + other agents   │
+│             + available skills              │
 │ Output: "好的，我们先明确需求范围..."          │
 └─────────────────────────────────────────────┘
     │
@@ -127,6 +198,8 @@ User types: "帮我设计一个用户系统"
 │ Backend scans reply for @mentions           │
 │ Finds: none (main agent is still in plan)    │
 │ No participant calls triggered               │
+│ Backend scans reply for <skill:.../> tags    │
+│ Finds: none                                  │
 └─────────────────────────────────────────────┘
     │
     ▼
@@ -157,6 +230,16 @@ User replies: "大概10万用户量，用Python"
 └─────────────────────────────────────────────┘
 ```
 
+## Frontend
+
+The frontend is a **WeChat-style white-themed** group chat interface built with **Vue 3 (CDN)**:
+
+- **Left sidebar**: Model management (add/edit/delete) + room list
+- **Right panel**: Chat area with avatars, message bubbles, and phase badge
+- **@Mention popup**: Auto-complete when typing `@`, filterable, keyboard navigable
+- **Model modal**: Full form with identity, function, role (main/participant), API key toggle
+- **Room creation modal**: Checkbox list of available models
+
 ## Extension Points
 
 ### MCP Integration (Future)
@@ -170,9 +253,6 @@ Beyond @-mention routing, custom strategies can be implemented:
 - `RoundRobin`: Each participant speaks in turn
 - `Debate`: Two sides alternate arguments
 - `Review`: Write → Review → Revise pipeline
-
-### Skills System (Future)
-Participants can load "skills" — predefined prompt templates + tool configurations for specific domains (code review, legal analysis, data analysis).
 
 ## Why Not Build on AutoGen / LangGraph?
 
